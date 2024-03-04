@@ -131,7 +131,7 @@ contract L2StandardBridge is StandardBridge, Semver {
     /**
      * @custom:legacy
      * @notice Finalizes a deposit from L1 to L2. To finalize a deposit of ether, use address(0)
-     *         and the l1Token and the Legacy ERC20 ether predeploy address as the l2Token.
+     *         as the l1Token and the Legacy ERC20 ether predeploy address as the l2Token.
      *
      * @param _l1Token   Address of the L1 token to deposit.
      * @param _l2Token   Address of the corresponding L2 token.
@@ -148,11 +148,7 @@ contract L2StandardBridge is StandardBridge, Semver {
         uint256 _amount,
         bytes calldata _extraData
     ) external payable virtual {
-        if (_l1Token == address(0) && _l2Token == Predeploys.LEGACY_ERC20_ETH) {
-            finalizeBridgeETH(_from, _to, _amount, _extraData);
-        } else {
-            finalizeBridgeERC20(_l2Token, _l1Token, _from, _to, _amount, _extraData);
-        }
+        finalizeBridgeERC20(_l2Token, _l1Token, _from, _to, _amount, _extraData);
     }
 
     /**
@@ -184,12 +180,8 @@ contract L2StandardBridge is StandardBridge, Semver {
         uint32 _minGasLimit,
         bytes memory _extraData
     ) internal {
-        if (_l2Token == Predeploys.LEGACY_ERC20_ETH) {
-            _initiateBridgeETH(_from, _to, _amount, _minGasLimit, _extraData);
-        } else {
-            address l1Token = OptimismMintableERC20(_l2Token).l1Token();
-            _initiateBridgeERC20(_l2Token, l1Token, _from, _to, _amount, _minGasLimit, _extraData);
-        }
+        address l1Token = OptimismMintableERC20(_l2Token).l1Token();
+        _initiateBridgeERC20(_l2Token, l1Token, _from, _to, _amount, _minGasLimit, _extraData);
     }
 
     /**

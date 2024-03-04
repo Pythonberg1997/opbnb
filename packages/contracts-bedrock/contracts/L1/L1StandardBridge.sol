@@ -204,23 +204,23 @@ contract L1StandardBridge is StandardBridge, Semver {
         );
     }
 
-    /**
-     * @custom:legacy
-     * @notice Finalizes a withdrawal of ETH from L2.
-     *
-     * @param _from      Address of the withdrawer on L2.
-     * @param _to        Address of the recipient on L1.
-     * @param _amount    Amount of ETH to withdraw.
-     * @param _extraData Optional data forwarded from L2.
-     */
-    function finalizeETHWithdrawal(
-        address _from,
-        address _to,
-        uint256 _amount,
-        bytes calldata _extraData
-    ) external payable {
-        finalizeBridgeETH(_from, _to, _amount, _extraData);
-    }
+//    /**
+//     * @custom:legacy
+//     * @notice Finalizes a withdrawal of ETH from L2.
+//     *
+//     * @param _from      Address of the withdrawer on L2.
+//     * @param _to        Address of the recipient on L1.
+//     * @param _amount    Amount of ETH to withdraw.
+//     * @param _extraData Optional data forwarded from L2.
+//     */
+//    function finalizeETHWithdrawal(
+//        address _from,
+//        address _to,
+//        uint256 _amount,
+//        bytes calldata _extraData
+//    ) external payable {
+//        finalizeBridgeETH(_from, _to, _amount, _extraData);
+//    }
 
     /**
      * @custom:legacy

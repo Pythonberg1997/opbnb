@@ -54,12 +54,14 @@ abstract contract StandardBridge {
      */
     mapping(address => mapping(address => uint256)) public deposits;
 
+    address public immutable GAS_TOKEN_ON_OTHER_SIDE; // WETH for L1, OVM_ETH for L2
+
     /**
      * @notice Reserve extra slots (to a total of 50) in the storage layout for future upgrades.
      *         A gap size of 47 was chosen here, so that the first slot used in a child contract
      *         would be a multiple of 50.
      */
-    uint256[47] private __gap;
+    uint256[46] private __gap;
 
     /**
      * @notice Emitted when an ETH bridge is initiated to the other chain.
@@ -280,34 +282,34 @@ abstract contract StandardBridge {
         );
     }
 
-    /**
-     * @notice Finalizes an ETH bridge on this chain. Can only be triggered by the other
-     *         StandardBridge contract on the remote chain.
-     *
-     * @param _from      Address of the sender.
-     * @param _to        Address of the receiver.
-     * @param _amount    Amount of ETH being bridged.
-     * @param _extraData Extra data to be sent with the transaction. Note that the recipient will
-     *                   not be triggered with this data, but it will be emitted and can be used
-     *                   to identify the transaction.
-     */
-    function finalizeBridgeETH(
-        address _from,
-        address _to,
-        uint256 _amount,
-        bytes calldata _extraData
-    ) public payable onlyOtherBridge {
-        require(msg.value == _amount, "StandardBridge: amount sent does not match amount required");
-        require(_to != address(this), "StandardBridge: cannot send to self");
-        require(_to != address(MESSENGER), "StandardBridge: cannot send to messenger");
-
-        // Emit the correct events. By default this will be _amount, but child
-        // contracts may override this function in order to emit legacy events as well.
-        _emitETHBridgeFinalized(_from, _to, _amount, _extraData);
-
-        bool success = SafeCall.call(_to, gasleft(), _amount, hex"");
-        require(success, "StandardBridge: ETH transfer failed");
-    }
+//    /**
+//     * @notice Finalizes an ETH bridge on this chain. Can only be triggered by the other
+//     *         StandardBridge contract on the remote chain.
+//     *
+//     * @param _from      Address of the sender.
+//     * @param _to        Address of the receiver.
+//     * @param _amount    Amount of ETH being bridged.
+//     * @param _extraData Extra data to be sent with the transaction. Note that the recipient will
+//     *                   not be triggered with this data, but it will be emitted and can be used
+//     *                   to identify the transaction.
+//     */
+//    function finalizeBridgeETH(
+//        address _from,
+//        address _to,
+//        uint256 _amount,
+//        bytes calldata _extraData
+//    ) public payable onlyOtherBridge {
+//        require(msg.value == _amount, "StandardBridge: amount sent does not match amount required");
+//        require(_to != address(this), "StandardBridge: cannot send to self");
+//        require(_to != address(MESSENGER), "StandardBridge: cannot send to messenger");
+//
+//        // Emit the correct events. By default this will be _amount, but child
+//        // contracts may override this function in order to emit legacy events as well.
+//        _emitETHBridgeFinalized(_from, _to, _amount, _extraData);
+//
+//        bool success = SafeCall.call(_to, gasleft(), _amount, hex"");
+//        require(success, "StandardBridge: ETH transfer failed");
+//    }
 
     /**
      * @notice Finalizes an ERC20 bridge on this chain. Can only be triggered by the other
@@ -329,22 +331,43 @@ abstract contract StandardBridge {
         address _to,
         uint256 _amount,
         bytes calldata _extraData
-    ) public onlyOtherBridge {
+    ) public payable onlyOtherBridge {
+        bool isOptimismMintable;
         if (_isOptimismMintableERC20(_localToken)) {
             require(
                 _isCorrectTokenPair(_localToken, _remoteToken),
                 "StandardBridge: wrong remote token for Optimism Mintable ERC20 local token"
             );
 
-            OptimismMintableERC20(_localToken).mint(_to, _amount);
+            isOptimismMintable = true;
         } else {
             deposits[_localToken][_remoteToken] = deposits[_localToken][_remoteToken] - _amount;
-            IERC20(_localToken).safeTransfer(_to, _amount);
         }
 
-        // Emit the correct events. By default this will be ERC20BridgeFinalized, but child
-        // contracts may override this function in order to emit legacy events as well.
-        _emitERC20BridgeFinalized(_localToken, _remoteToken, _from, _to, _amount, _extraData);
+        if (_localToken == address(0)) {
+            require(msg.value == _amount, "StandardBridge: amount sent does not match amount required");
+            require(_to != address(this), "StandardBridge: cannot send to self");
+            require(_to != address(MESSENGER), "StandardBridge: cannot send to messenger");
+
+            // Emit the correct events. By default this will be _amount, but child
+            // contracts may override this function in order to emit legacy events as well.
+            _emitETHBridgeFinalized(_from, _to, _amount, _extraData);
+
+            bool success = SafeCall.call(_to, gasleft(), _amount, hex"");
+            require(success, "StandardBridge: ETH transfer failed");
+        } else {
+            require(msg.value == 0, "StandardBridge: cannot send ETH with ERC20 finalize");
+
+            // Emit the correct events. By default this will be ERC20BridgeFinalized, but child
+            // contracts may override this function in order to emit legacy events as well.
+            _emitERC20BridgeFinalized(_localToken, _remoteToken, _from, _to, _amount, _extraData);
+
+            if (isOptimismMintable) {
+                OptimismMintableERC20(_localToken).mint(_to, _amount);
+            } else {
+                IERC20(_localToken).safeTransfer(_to, _amount);
+            }
+        }
     }
 
     /**
@@ -377,7 +400,12 @@ abstract contract StandardBridge {
         MESSENGER.sendMessage{ value: _amount }(
             address(OTHER_BRIDGE),
             abi.encodeWithSelector(
-                this.finalizeBridgeETH.selector,
+                this.finalizeBridgeERC20.selector,
+                // Because this call will be executed on the remote chain, we reverse the order of
+                // the remote and local token addresses relative to their order in the
+                // finalizeBridgeERC20 function.
+                GAS_TOKEN_ON_OTHER_SIDE,
+                address(0),
                 _from,
                 _to,
                 _amount,
